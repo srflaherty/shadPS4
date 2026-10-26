@@ -464,8 +464,8 @@ void Rasterizer::BindVertexBuffers(const GraphicsPipeline* pipeline) {
     struct BufferRange {
         VAddr base_address;
         VAddr end_address;
-        const VideoCore::Buffer* buffer;
-        u64 offset;
+        const VideoCore::Buffer* buffer{};
+        u64 offset{};
 
         [[nodiscard]] size_t GetSize() const {
             return end_address - base_address;
@@ -500,6 +500,9 @@ void Rasterizer::BindVertexBuffers(const GraphicsPipeline* pipeline) {
     // Map buffers for merged ranges
     for (auto& range : ranges_merged) {
         const u64 size = memory->ClampRangeSize(range.base_address, range.GetSize());
+        if (size == 0) {
+            continue;
+        }
         std::tie(range.buffer, range.offset) = buffer_cache.ObtainBuffer(range.base_address, size);
         needs_barrier |= runtime.IsBufferAccessed(range.buffer, range.offset, size);
         bound_buffers.emplace_back(range.buffer, range.offset, size,
@@ -519,9 +522,14 @@ void Rasterizer::BindVertexBuffers(const GraphicsPipeline* pipeline) {
                            buffer.base_address < range.end_address;
                 });
             ASSERT(host_buffer_info != ranges_merged.cend());
-            host_buffers.emplace_back(host_buffer_info->buffer->Handle());
-            host_offsets.push_back(host_buffer_info->offset + buffer.base_address -
-                                   host_buffer_info->base_address);
+            if (host_buffer_info->buffer == nullptr) {
+                host_buffers.emplace_back(VK_NULL_HANDLE);
+                host_offsets.push_back(0);
+            } else {
+                host_buffers.emplace_back(host_buffer_info->buffer->Handle());
+                host_offsets.push_back(host_buffer_info->offset + buffer.base_address -
+                                       host_buffer_info->base_address);
+            }
         } else {
             host_buffers.emplace_back(VK_NULL_HANDLE);
             host_offsets.push_back(0);
@@ -811,10 +819,12 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, Shader::Backend::Binding
             }
         } else {
             const auto vsharp = desc.GetSharp(stage);
-            if (vsharp.base_address == 0 || vsharp.GetSize() == 0) {
+            const u64 size = vsharp.base_address == 0 || vsharp.GetSize() == 0
+                                 ? 0
+                                 : memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize());
+            if (size == 0) {
                 buffer_infos.emplace_back(VK_NULL_HANDLE, 0, VK_WHOLE_SIZE);
             } else {
-                const u64 size = memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize());
                 if (size != vsharp.GetSize()) {
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
                               vsharp.GetSize(), size, stage.pgm_hash);

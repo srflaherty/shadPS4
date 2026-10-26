@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <atomic>
 #include <boost/container/small_vector.hpp>
 #include "common/alignment.h"
 #include "common/assert.h"
@@ -108,8 +109,15 @@ u64 MemoryManager::ClampRangeSize(VAddr virtual_addr, u64 size) {
     }
 
     std::shared_lock lk{mutex};
-    ASSERT_MSG(IsValidMapping(virtual_addr), "Attempted to access invalid address {:#x}",
-               virtual_addr);
+    if (!IsValidMapping(virtual_addr)) {
+        static std::atomic<u32> logged{0};
+        if (logged.fetch_add(1, std::memory_order_relaxed) < 8) {
+            LOG_ERROR(Kernel_Vmm,
+                      "Buffer at unmapped address {:#x} (size {:#x}) bound as a null buffer",
+                      virtual_addr, size);
+        }
+        return 0;
+    }
 
     // Clamp size to the remaining size of the current VMA.
     auto vma = FindVMA(virtual_addr);
