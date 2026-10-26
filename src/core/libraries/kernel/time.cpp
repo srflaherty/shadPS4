@@ -474,18 +474,21 @@ s32 PS4_SYSV_ABI sceKernelGettimezone(OrbisKernelTimezone* tz) {
 }
 
 s32 PS4_SYSV_ABI sceKernelConvertLocaltimeToUtc(time_t param_1, int64_t param_2, time_t* seconds,
-                                                OrbisKernelTimezone* timezone, s32* dst_seconds) {
-    if (timezone) {
-        sceKernelGettimezone(timezone);
-        param_1 -= (timezone->tz_minuteswest + timezone->tz_dsttime) * 60;
-        if (seconds) {
-            *seconds = param_1;
-        }
-        if (dst_seconds) {
-            *dst_seconds = timezone->tz_dsttime * 60;
-        }
-    } else {
+                                                OrbisTimesec* st, s32* dst_seconds) {
+    if (st == nullptr) {
         return ORBIS_KERNEL_ERROR_EINVAL;
+    }
+    OrbisKernelTimezone timezone;
+    sceKernelGettimezone(&timezone);
+    param_1 -= (timezone.tz_minuteswest + timezone.tz_dsttime) * 60;
+    if (seconds) {
+        *seconds = param_1;
+    }
+    st->t = param_1;
+    st->west_sec = timezone.tz_minuteswest * 60;
+    st->dst_sec = timezone.tz_dsttime * 60;
+    if (dst_seconds) {
+        *dst_seconds = timezone.tz_dsttime * 60;
     }
     return ORBIS_OK;
 }
